@@ -2,26 +2,51 @@ import cv2
 import numpy as np
 from config import CAMERA_SOURCE, MOTION_THRESHOLD, MIN_CONTOUR_AREA
 
+_USE_PICAMERA = CAMERA_SOURCE == "picamera"
+
 
 class MotionDetector:
     def __init__(self):
         self.bg_subtractor = cv2.createBackgroundSubtractorMOG2(
             history=500, varThreshold=MOTION_THRESHOLD, detectShadows=False
         )
-        self.cap = None
+        self._cam = None
+        self._fps = 25.0
+        self._frame_size = (1280, 720)
 
     def open(self):
-        self.cap = cv2.VideoCapture(CAMERA_SOURCE)
-        if not self.cap.isOpened():
-            raise RuntimeError(f"Cannot open camera: {CAMERA_SOURCE}")
-        self.cap.set(cv2.CAP_PROP_FRAME_WIDTH, 1280)
-        self.cap.set(cv2.CAP_PROP_FRAME_HEIGHT, 720)
+        if _USE_PICAMERA:
+            from picamera2 import Picamera2
+            self._cam = Picamera2()
+            config = self._cam.create_video_configuration(
+                main={"size": (1280, 720), "format": "BGR888"}
+            )
+            self._cam.configure(config)
+            self._cam.start()
+            self._fps = 25.0
+            self._frame_size = (1280, 720)
+        else:
+            self._cam = cv2.VideoCapture(CAMERA_SOURCE)
+            if not self._cam.isOpened():
+                raise RuntimeError(f"Cannot open camera: {CAMERA_SOURCE}")
+            self._cam.set(cv2.CAP_PROP_FRAME_WIDTH, 1280)
+            self._cam.set(cv2.CAP_PROP_FRAME_HEIGHT, 720)
+            self._fps = self._cam.get(cv2.CAP_PROP_FPS) or 25.0
+            self._frame_size = (
+                int(self._cam.get(cv2.CAP_PROP_FRAME_WIDTH)),
+                int(self._cam.get(cv2.CAP_PROP_FRAME_HEIGHT)),
+            )
 
     def read_frame(self):
         """Return (frame, motion_detected). frame is None on read failure."""
-        ret, frame = self.cap.read()
-        if not ret:
-            return None, False
+        if _USE_PICAMERA:
+            frame = self._cam.capture_array("main")
+            # IMX708 is mounted upside-down on most Pi Camera Module 3 cases
+            frame = cv2.rotate(frame, cv2.ROTATE_180)
+        else:
+            ret, frame = self._cam.read()
+            if not ret:
+                return None, False
         return frame, self._detect_motion(frame)
 
     def _detect_motion(self, frame):
@@ -31,13 +56,14 @@ class MotionDetector:
         return any(cv2.contourArea(c) >= MIN_CONTOUR_AREA for c in contours)
 
     def fps(self):
-        return self.cap.get(cv2.CAP_PROP_FPS) or 25.0
+        return self._fps
 
     def frame_size(self):
-        w = int(self.cap.get(cv2.CAP_PROP_FRAME_WIDTH))
-        h = int(self.cap.get(cv2.CAP_PROP_FRAME_HEIGHT))
-        return w, h
+        return self._frame_size
 
     def close(self):
-        if self.cap:
-            self.cap.release()
+        if self._cam:
+            if _USE_PICAMERA:
+                self._cam.stop()
+            else:
+                self._cam.release()
