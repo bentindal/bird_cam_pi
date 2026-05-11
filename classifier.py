@@ -5,7 +5,7 @@ from config import HF_API_KEY, HF_MODEL_URL
 
 def classify_bird(image_path: str) -> tuple[str, float]:
     """Return (species_label, confidence) for the top prediction, or ("Unknown", 0.0) on failure."""
-    headers = {}
+    headers = {"Content-Type": "image/jpeg"}
     if HF_API_KEY:
         headers["Authorization"] = f"Bearer {HF_API_KEY}"
 

@@ -23,4 +23,4 @@ STREAM_PORT = int(os.getenv("STREAM_PORT", 5000))
 CAPTURES_DIR = os.path.join(os.path.dirname(__file__), "captures")
 os.makedirs(CAPTURES_DIR, exist_ok=True)
 
-HF_MODEL_URL = "https://api-inference.huggingface.co/models/chriamue/bird-species-classifier"
+HF_MODEL_URL = "https://router.huggingface.co/hf-inference/models/chriamue/bird-species-classifier"
