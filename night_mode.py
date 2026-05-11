@@ -15,9 +15,9 @@ DAY_CONTROLS = {
 NIGHT_CONTROLS = {
     "AeEnable": False,
     "AwbEnable": False,
-    "AnalogueGain": 8.0,
-    "ExposureTime": 80000,  # 80ms — motion-tolerant but sensitive
-    "ColourGains": (1.5, 1.5),
+    "AnalogueGain": 16.0,    # max analogue gain
+    "ExposureTime": 200000,  # 200ms — slow but maximally sensitive
+    "ColourGains": (2.0, 2.0),
 }
 
 
