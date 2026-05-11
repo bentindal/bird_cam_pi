@@ -13,10 +13,12 @@ class MotionDetector:
         self._cam = None
         self._fps = 25.0
         self._frame_size = (1280, 720)
+        self._current_mode = None
 
     def open(self):
         if _USE_PICAMERA:
             from picamera2 import Picamera2
+            from night_mode import current_controls, mode_name
             self._cam = Picamera2()
             config = self._cam.create_video_configuration(
                 main={"size": (1280, 720), "format": "BGR888"}
@@ -25,6 +27,9 @@ class MotionDetector:
             self._cam.start()
             self._fps = 25.0
             self._frame_size = (1280, 720)
+            self._current_mode = mode_name()
+            self._cam.set_controls(current_controls())
+            print(f"[camera] Starting in {self._current_mode} mode")
         else:
             self._cam = cv2.VideoCapture(CAMERA_SOURCE)
             if not self._cam.isOpened():
@@ -36,6 +41,17 @@ class MotionDetector:
                 int(self._cam.get(cv2.CAP_PROP_FRAME_WIDTH)),
                 int(self._cam.get(cv2.CAP_PROP_FRAME_HEIGHT)),
             )
+
+    def apply_mode_if_changed(self):
+        """Call periodically to switch day/night settings automatically."""
+        if not _USE_PICAMERA:
+            return
+        from night_mode import current_controls, mode_name
+        new_mode = mode_name()
+        if new_mode != self._current_mode:
+            self._current_mode = new_mode
+            self._cam.set_controls(current_controls())
+            print(f"[camera] Switched to {new_mode} mode")
 
     def read_frame(self):
         """Return (frame, motion_detected). frame is None on read failure."""
