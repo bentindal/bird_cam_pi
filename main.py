@@ -1,6 +1,6 @@
 import signal
-import sys
 import time
+from concurrent.futures import ThreadPoolExecutor
 from detector import MotionDetector
 from recorder import Recorder
 from classifier import classify_bird
@@ -15,6 +15,14 @@ def _handle_sigint(sig, frame):
     global _running
     print("\nShutting down...")
     _running = False
+
+
+def _classify_and_notify(snapshot: str):
+    print(f"Classifying {snapshot}...")
+    species, confidence = classify_bird(snapshot)
+    print(f"Result: {species} ({confidence}%)")
+    send_notification(snapshot, species, confidence)
+    print("Telegram notification sent.")
 
 
 def main():
@@ -32,40 +40,33 @@ def main():
     last_mode_check_time = 0.0
 
     print("Watching for movement. Press Ctrl+C to stop.")
-    while _running:
-        frame, motion = detector.read_frame()
-        if frame is None:
-            print("Camera read failed — retrying...")
-            time.sleep(0.1)
-            continue
+    with ThreadPoolExecutor(max_workers=2) as pool:
+        while _running:
+            frame, motion = detector.read_frame()
+            if frame is None:
+                print("Camera read failed — retrying...")
+                time.sleep(0.1)
+                continue
 
-        streamer.update_frame(frame)
-        recorder.push_frame(frame)
+            streamer.update_frame(frame)
+            recorder.push_frame(frame)
 
-        now = time.time()
-        cooldown_elapsed = (now - last_notification_time) >= NOTIFICATION_COOLDOWN
+            now = time.time()
+            cooldown_elapsed = (now - last_notification_time) >= NOTIFICATION_COOLDOWN
 
-        if now - last_mode_check_time >= 60:
-            detector.apply_mode_if_changed()
-            last_mode_check_time = now
+            if now - last_mode_check_time >= 60:
+                detector.apply_mode_if_changed()
+                last_mode_check_time = now
 
-        if motion and not recorder.is_recording() and cooldown_elapsed:
-            print(f"Motion detected — saving clip + snapshot")
-            recorder.trigger(frame)
+            if motion and not recorder.is_recording() and cooldown_elapsed:
+                print("Motion detected — saving clip + snapshot")
+                recorder.trigger(frame)
 
-        # Once a recording finishes (post-trigger done), classify and notify
-        snapshot = recorder.snapshot_path()
-        if snapshot and not recorder.is_recording() and cooldown_elapsed:
-            last_notification_time = now
-            recorder._snapshot_path = None  # consume so we don't re-notify
-
-            print(f"Classifying {snapshot}...")
-            species, confidence = classify_bird(snapshot)
-            print(f"Result: {species} ({confidence}%)")
-
-            if NOTIFICATION_COOLDOWN > 0:
-                send_notification(snapshot, species, confidence)
-                print("Telegram notification sent.")
+            snapshot = recorder.snapshot_path()
+            if snapshot and not recorder.is_recording() and cooldown_elapsed:
+                last_notification_time = now
+                recorder._snapshot_path = None
+                pool.submit(_classify_and_notify, snapshot)
 
     detector.close()
     recorder.close()
