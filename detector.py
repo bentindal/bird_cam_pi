@@ -41,8 +41,6 @@ class MotionDetector:
         """Return (frame, motion_detected). frame is None on read failure."""
         if _USE_PICAMERA:
             frame = self._cam.capture_array("main")
-            # IMX708 is mounted upside-down on most Pi Camera Module 3 cases
-            frame = cv2.rotate(frame, cv2.ROTATE_180)
         else:
             ret, frame = self._cam.read()
             if not ret:
