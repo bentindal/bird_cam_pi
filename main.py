@@ -39,6 +39,7 @@ def main():
 
     recorder = Recorder(fps=detector.fps(), frame_size=detector.frame_size())
 
+    streamer.set_detector(detector)
     print(f"Stream available at http://localhost:{STREAM_PORT}")
     streamer.start()
 

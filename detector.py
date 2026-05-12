@@ -42,6 +42,10 @@ class MotionDetector:
                 int(self._cam.get(cv2.CAP_PROP_FRAME_HEIGHT)),
             )
 
+    def apply_controls(self, controls: dict):
+        if _USE_PICAMERA and self._cam:
+            self._cam.set_controls(controls)
+
     def apply_mode_if_changed(self):
         """Call periodically to switch day/night settings automatically."""
         if not _USE_PICAMERA:
