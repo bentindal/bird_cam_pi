@@ -17,10 +17,16 @@ def _handle_sigint(sig, frame):
     _running = False
 
 
+BIRD_ID_ENABLED = False
+
+
 def _classify_and_notify(snapshot: str):
-    print(f"Classifying {snapshot}...")
-    species, confidence = classify_bird(snapshot)
-    print(f"Result: {species} ({confidence}%)")
+    if BIRD_ID_ENABLED:
+        print(f"Classifying {snapshot}...")
+        species, confidence = classify_bird(snapshot)
+        print(f"Result: {species} ({confidence}%)")
+    else:
+        species, confidence = "Motion detected", 0.0
     send_notification(snapshot, species, confidence)
     print("Telegram notification sent.")
 
