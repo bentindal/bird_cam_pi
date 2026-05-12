@@ -10,6 +10,7 @@ _TZ = pytz.timezone("Europe/London")
 DAY_CONTROLS = {
     "AeEnable": True,
     "AwbEnable": True,
+    "AwbMode": 4,  # Daylight — corrects the IMX708's cool/blue bias
 }
 
 NIGHT_CONTROLS = {
