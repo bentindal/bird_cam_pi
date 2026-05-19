@@ -84,7 +84,9 @@ software encoding (`cv2.VideoWriter`) spiked CPU ~60% and overheated the Pi.
   foliage doesn't false-trigger. The ROI box is drawn on the live stream
   (`MOTION_ROI_OVERLAY`) for visual tuning.
 - Telegram notifications are only sent when bird-ID confidence exceeds
-  `CONFIDENCE_THRESHOLD` (default 60%).
+  `CONFIDENCE_THRESHOLD` (default 60%) and the species is not in
+  `IGNORED_SPECIES` (the classifier always returns *some* bird, so
+  birdless frames get a confident wrong guess — e.g. "wood duck").
 
 ## Development
 

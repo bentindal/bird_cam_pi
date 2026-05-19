@@ -18,6 +18,15 @@ NOTIFICATION_COOLDOWN = int(os.getenv("NOTIFICATION_COOLDOWN", 30))
 # Minimum bird-ID confidence (%) required to send a Telegram notification.
 CONFIDENCE_THRESHOLD = float(os.getenv("CONFIDENCE_THRESHOLD", 60))
 
+# Species to never notify about — the classifier always returns *some* bird,
+# so birdless frames get a confident wrong guess. Comma-separated, matched
+# case-insensitively against the classifier label.
+IGNORED_SPECIES = {
+    s.strip().lower()
+    for s in os.getenv("IGNORED_SPECIES", "").split(",")
+    if s.strip()
+}
+
 PRE_BUFFER_SECONDS = int(os.getenv("PRE_BUFFER_SECONDS", 3))
 POST_TRIGGER_SECONDS = int(os.getenv("POST_TRIGGER_SECONDS", 7))
 
