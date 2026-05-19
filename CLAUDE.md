@@ -83,6 +83,11 @@ software encoding (`cv2.VideoWriter`) spiked CPU ~60% and overheated the Pi.
   `.env`, normalized `x1,y1,x2,y2`) covering the feeder, so wind in background
   foliage doesn't false-trigger. The ROI box is drawn on the live stream
   (`MOTION_ROI_OVERLAY`) for visual tuning.
+- `detect_motion()` returns the **bounding box** of bird-plausible motion, or
+  `None`. Blobs too small (noise) or too large (`MOTION_MAX_AREA_FRAC` —
+  feeder sway / lighting changes) are rejected. The classifier runs on a
+  **crop of that box** (`crop.jpg`), not the whole frame, so it sees the bird
+  rather than the static suet balls. Telegram still gets the full snapshot.
 - Telegram notifications are only sent when bird-ID confidence exceeds
   `CONFIDENCE_THRESHOLD` (default 60%) and the species is not in
   `IGNORED_SPECIES` (the classifier always returns *some* bird, so

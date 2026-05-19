@@ -1,7 +1,7 @@
 import cv2
 import numpy as np
 from config import (CAMERA_SOURCE, MOTION_THRESHOLD, MIN_CONTOUR_AREA,
-                    PRE_BUFFER_SECONDS, MOTION_ROI)
+                    PRE_BUFFER_SECONDS, MOTION_ROI, MOTION_MAX_AREA_FRAC)
 
 _USE_PICAMERA = CAMERA_SOURCE == "picamera"
 
@@ -83,20 +83,37 @@ class MotionDetector:
         return frame if ret else None
 
     def detect_motion(self, frame):
-        """Background-subtraction motion check within the ROI of a downscaled frame.
+        """Detect bird-plausible motion within the feeder ROI.
 
-        The ROI restricts detection to the feeder, ignoring background
-        foliage so wind in trees doesn't false-trigger.
+        Returns the full-frame bounding box (x1, y1, x2, y2) of the moving
+        subject — padded slightly for context — or None. Blobs that are too
+        small (sensor noise) or too large (feeder sway, lighting changes)
+        are rejected, so only bird-sized motion triggers a capture.
         """
         h, w = frame.shape[:2]
-        x1, y1, x2, y2 = MOTION_ROI
-        roi = frame[int(y1 * h):int(y2 * h), int(x1 * w):int(x2 * w)]
+        rx1, ry1 = int(MOTION_ROI[0] * w), int(MOTION_ROI[1] * h)
+        rx2, ry2 = int(MOTION_ROI[2] * w), int(MOTION_ROI[3] * h)
+        roi = frame[ry1:ry2, rx1:rx2]
         small = cv2.resize(roi, None, fx=self._motion_scale, fy=self._motion_scale,
                            interpolation=cv2.INTER_AREA)
         fg_mask = self.bg_subtractor.apply(small)
         fg_mask = cv2.morphologyEx(fg_mask, cv2.MORPH_OPEN, self._kernel)
         contours, _ = cv2.findContours(fg_mask, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
-        return any(cv2.contourArea(c) >= self._min_area for c in contours)
+
+        max_area = small.shape[0] * small.shape[1] * MOTION_MAX_AREA_FRAC
+        candidates = [c for c in contours
+                      if self._min_area <= cv2.contourArea(c) <= max_area]
+        if not candidates:
+            return None
+
+        bx, by, bw, bh = cv2.boundingRect(max(candidates, key=cv2.contourArea))
+        s = self._motion_scale
+        # small -> ROI -> full frame, then pad 30% for context, clamped.
+        fx1, fy1 = rx1 + bx / s, ry1 + by / s
+        fx2, fy2 = rx1 + (bx + bw) / s, ry1 + (by + bh) / s
+        pad_x, pad_y = (fx2 - fx1) * 0.3, (fy2 - fy1) * 0.3
+        return (max(0, int(fx1 - pad_x)), max(0, int(fy1 - pad_y)),
+                min(w, int(fx2 + pad_x)), min(h, int(fy2 + pad_y)))
 
     def start_clip(self, path):
         """Dump the H.264 ring buffer (pre-roll) and keep writing to `path`."""

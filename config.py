@@ -12,6 +12,9 @@ CAMERA_SOURCE = int(CAMERA_SOURCE) if CAMERA_SOURCE.isdigit() else CAMERA_SOURCE
 
 MOTION_THRESHOLD = int(os.getenv("MOTION_THRESHOLD", 500))
 MIN_CONTOUR_AREA = int(os.getenv("MIN_CONTOUR_AREA", 1500))
+# Reject motion blobs larger than this fraction of the ROI — a real bird
+# never fills most of the feeder; feeder sway / lighting changes do.
+MOTION_MAX_AREA_FRAC = float(os.getenv("MOTION_MAX_AREA_FRAC", 0.6))
 
 NOTIFICATION_COOLDOWN = int(os.getenv("NOTIFICATION_COOLDOWN", 30))
 

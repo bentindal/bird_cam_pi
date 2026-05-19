@@ -18,11 +18,16 @@ class Recorder:
         self._detector = detector
         self._recording = False
         self._snapshot_path = None
+        self._classify_path = None
         self._clip_h264 = None
         self._timer = None
 
-    def trigger(self, frame):
-        """Call when motion is detected: save a snapshot and start a clip."""
+    def trigger(self, frame, bbox=None):
+        """Call when motion is detected: save a snapshot and start a clip.
+
+        `bbox` (x1, y1, x2, y2) is the motion region; a crop of it is saved
+        for the classifier, so it sees the bird and not the whole feeder.
+        """
         if self._recording:
             return
         self._recording = True
@@ -33,6 +38,14 @@ class Recorder:
 
         self._snapshot_path = os.path.join(clip_dir, "snapshot.jpg")
         cv2.imwrite(self._snapshot_path, frame)
+
+        if bbox is not None:
+            x1, y1, x2, y2 = bbox
+            crop = frame[y1:y2, x1:x2]
+            self._classify_path = os.path.join(clip_dir, "crop.jpg")
+            cv2.imwrite(self._classify_path, crop)
+        else:
+            self._classify_path = self._snapshot_path
 
         self._clip_h264 = os.path.join(clip_dir, "clip.h264")
         self._detector.start_clip(self._clip_h264)
@@ -64,6 +77,10 @@ class Recorder:
 
     def snapshot_path(self):
         return self._snapshot_path
+
+    def classify_path(self):
+        """The image the classifier should use — the motion crop if available."""
+        return self._classify_path
 
     def is_recording(self):
         return self._recording

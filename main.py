@@ -21,10 +21,10 @@ def _handle_sigint(sig, frame):
 BIRD_ID_ENABLED = True
 
 
-def _classify_and_notify(snapshot: str):
+def _classify_and_notify(snapshot: str, classify_img: str):
     if BIRD_ID_ENABLED:
-        print(f"Classifying {snapshot}...")
-        species, confidence = classify_bird(snapshot)
+        print(f"Classifying {classify_img}...")
+        species, confidence = classify_bird(classify_img)
         print(f"Result: {species} ({confidence}%)")
         if confidence < CONFIDENCE_THRESHOLD:
             print(f"Confidence below {CONFIDENCE_THRESHOLD}% — skipping notification.")
@@ -76,16 +76,18 @@ def main():
 
             # Motion detection is the heaviest per-frame cost — run it only
             # every 10th frame (the trigger never acted more often anyway).
-            if frame_count % 10 == 0 and detector.detect_motion(frame):
-                if not recorder.is_recording() and cooldown_elapsed:
+            if frame_count % 10 == 0:
+                bbox = detector.detect_motion(frame)
+                if bbox and not recorder.is_recording() and cooldown_elapsed:
                     print("Motion detected — saving clip + snapshot")
-                    recorder.trigger(frame)
+                    recorder.trigger(frame, bbox)
 
             snapshot = recorder.snapshot_path()
             if snapshot and not recorder.is_recording() and cooldown_elapsed:
                 last_notification_time = now
+                classify_img = recorder.classify_path()
                 recorder._snapshot_path = None
-                pool.submit(_classify_and_notify, snapshot)
+                pool.submit(_classify_and_notify, snapshot, classify_img)
 
             elapsed = time.time() - loop_start
             if elapsed < LOOP_INTERVAL:
