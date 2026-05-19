@@ -18,9 +18,11 @@ service (`bird-cam.service`).
 - Local network: `projectmochi.local` (mDNS)
 - Tailscale: hostname `projectmochi`, IP `100.86.62.4` — reachable from anywhere
   on the tailnet (`tailscaled` is installed and enabled on boot)
+- Tailscale MagicDNS: `projectmochi.tailbcba89.ts.net`
 - SSH user is `mochi`: `ssh mochi@100.86.62.4` (or `ssh mochi@projectmochi`)
 - App lives at `/home/mochi/bird_cam_pi` on the Pi
-- Live stream: `http://projectmochi:5000` (or `http://100.86.62.4:5000`)
+- Live stream: `http://projectmochi.tailbcba89.ts.net:5000`
+  (or `http://projectmochi:5000` / `http://100.86.62.4:5000`)
 - Service control: `sudo systemctl {status,restart} bird-cam`
 - Logs: `sudo journalctl -u bird-cam -f`
 
