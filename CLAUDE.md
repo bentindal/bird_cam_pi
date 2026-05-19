@@ -92,9 +92,10 @@ software encoding (`cv2.VideoWriter`) spiked CPU ~60% and overheated the Pi.
   feeder sway / lighting changes) are rejected.
 - A capture only triggers after `MOTION_CONSECUTIVE` consecutive detection
   cycles of motion — lets a bird land/settle and rejects brief transients.
-- The classifier runs on a **crop of the motion box** (`crop.jpg`) so it sees
-  the bird, not the whole frame — but falls back to the full snapshot if the
-  crop is tiny (<96px).
+- The snapshot and classifier crop are extracted from the **middle of the
+  recorded clip** (not the trigger instant), so they catch the settled bird
+  rather than the entering/leaving transient. The classifier uses a crop at
+  the motion box, falling back to the full frame if the crop is tiny (<96px).
 - On a trigger the **~10s clip** (pre-roll + post-trigger) is sent to Telegram,
   with species + confidence as the caption. (No confidence/species filtering
   currently — the confidence gate was removed.)

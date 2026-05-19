@@ -19,39 +19,37 @@ class Recorder:
         self._recording = False
         self._snapshot_path = None
         self._classify_path = None
+        self._clip_dir = None
         self._clip_h264 = None
         self._clip_mp4 = None
+        self._bbox = None
         self._timer = None
 
     def trigger(self, frame, bbox=None):
-        """Call when motion is detected: save a snapshot and start a clip.
+        """Call when motion is detected: start a clip.
 
-        `bbox` (x1, y1, x2, y2) is the motion region; a crop of it is saved
-        for the classifier, so it sees the bird and not the whole feeder.
+        The snapshot and classifier crop are taken from the *middle* of the
+        finished clip (in _finalise), so they catch the settled bird rather
+        than the trigger-instant transient. `frame` is saved as a provisional
+        fallback snapshot in case the clip can't be processed.
         """
         if self._recording:
             return
         self._recording = True
         self._clip_mp4 = None
+        self._bbox = bbox
 
         ts = datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
-        clip_dir = os.path.join(CAPTURES_DIR, ts)
-        os.makedirs(clip_dir, exist_ok=True)
+        self._clip_dir = os.path.join(CAPTURES_DIR, ts)
+        os.makedirs(self._clip_dir, exist_ok=True)
 
-        self._snapshot_path = os.path.join(clip_dir, "snapshot.jpg")
+        # Provisional snapshot from the trigger frame — replaced by a
+        # mid-clip frame in _finalise() once the clip has been recorded.
+        self._snapshot_path = os.path.join(self._clip_dir, "snapshot.jpg")
+        self._classify_path = self._snapshot_path
         cv2.imwrite(self._snapshot_path, frame)
 
-        # Classify the motion crop — but if the box is tiny (motion didn't
-        # localise a real subject), fall back to the full snapshot.
-        self._classify_path = self._snapshot_path
-        if bbox is not None:
-            x1, y1, x2, y2 = bbox
-            crop = frame[y1:y2, x1:x2]
-            if crop.shape[0] >= 96 and crop.shape[1] >= 96:
-                self._classify_path = os.path.join(clip_dir, "crop.jpg")
-                cv2.imwrite(self._classify_path, crop)
-
-        self._clip_h264 = os.path.join(clip_dir, "clip.h264")
+        self._clip_h264 = os.path.join(self._clip_dir, "clip.h264")
         self._detector.start_clip(self._clip_h264)
 
         self._timer = threading.Timer(POST_TRIGGER_SECONDS, self._finalise)
@@ -60,10 +58,45 @@ class Recorder:
 
     def _finalise(self):
         self._detector.stop_clip()
-        # Remux before clearing _recording, so clip_path() is ready the
-        # moment the main loop sees recording has finished.
+        # Remux and pick the snapshot before clearing _recording, so all
+        # paths are ready the moment the main loop sees recording finished.
         self._clip_mp4 = self._remux_to_mp4(self._clip_h264)
+        self._extract_midframe()
         self._recording = False
+
+    def _extract_midframe(self):
+        """Replace the snapshot with a frame from the middle of the clip —
+        the bird is settled and in shot there, not mid-transit — and re-crop
+        it to the motion box for the classifier."""
+        clip = self._clip_mp4
+        if not clip or not clip.endswith(".mp4") or not os.path.exists(clip):
+            return  # remux failed — keep the provisional trigger snapshot
+        try:
+            probe = subprocess.run(
+                ["ffprobe", "-v", "error", "-show_entries", "format=duration",
+                 "-of", "default=nw=1:nk=1", clip],
+                capture_output=True, text=True, check=True, timeout=10)
+            mid = float(probe.stdout.strip()) / 2
+            subprocess.run(
+                ["ffmpeg", "-y", "-ss", f"{mid:.2f}", "-i", clip,
+                 "-vframes", "1", self._snapshot_path],
+                stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
+                check=True, timeout=20)
+        except Exception as e:
+            print(f"[recorder] mid-frame extract failed, kept trigger snapshot: {e}")
+            return
+
+        # Classify a crop at the motion box; fall back to the full frame if
+        # the box is tiny (motion didn't localise a real subject).
+        self._classify_path = self._snapshot_path
+        if self._bbox is not None:
+            img = cv2.imread(self._snapshot_path)
+            if img is not None:
+                x1, y1, x2, y2 = self._bbox
+                crop = img[y1:y2, x1:x2]
+                if crop.size and crop.shape[0] >= 96 and crop.shape[1] >= 96:
+                    self._classify_path = os.path.join(self._clip_dir, "crop.jpg")
+                    cv2.imwrite(self._classify_path, crop)
 
     @staticmethod
     def _remux_to_mp4(h264_path):
