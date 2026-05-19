@@ -35,16 +35,27 @@ def classify_bird(image_path: str) -> tuple[str, float]:
     try:
         with open(image_path, "rb") as f:
             data = f.read()
-        response = requests.post(HF_MODEL_URL, headers=headers, data=data, timeout=15)
-        response.raise_for_status()
-        results = response.json()
-        if isinstance(results, list) and results:
-            top = results[0]
-            label = top.get("label", "Unknown").replace("_", " ").title()
-            score = round(top.get("score", 0.0) * 100, 1)
-            return label, score
     except Exception as e:
-        print(f"[classifier] Error: {e}")
+        print(f"[classifier] Could not read image: {e}")
+        return "Unknown", 0.0
+
+    # The HF serverless endpoint cold-starts (model loading), so the first
+    # call after idle is slow — use a generous timeout and retry once.
+    for attempt in (1, 2):
+        try:
+            response = requests.post(HF_MODEL_URL, headers=headers, data=data, timeout=30)
+            response.raise_for_status()
+            results = response.json()
+            if isinstance(results, list) and results:
+                top = results[0]
+                label = top.get("label", "Unknown").replace("_", " ").title()
+                score = round(top.get("score", 0.0) * 100, 1)
+                return label, score
+            return "Unknown", 0.0
+        except Exception as e:
+            print(f"[classifier] attempt {attempt} failed: {e}")
+            if attempt == 1:
+                time.sleep(3)
     return "Unknown", 0.0
 
 

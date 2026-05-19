@@ -20,6 +20,7 @@ class Recorder:
         self._snapshot_path = None
         self._classify_path = None
         self._clip_h264 = None
+        self._clip_mp4 = None
         self._timer = None
 
     def trigger(self, frame, bbox=None):
@@ -31,6 +32,7 @@ class Recorder:
         if self._recording:
             return
         self._recording = True
+        self._clip_mp4 = None
 
         ts = datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
         clip_dir = os.path.join(CAPTURES_DIR, ts)
@@ -39,13 +41,15 @@ class Recorder:
         self._snapshot_path = os.path.join(clip_dir, "snapshot.jpg")
         cv2.imwrite(self._snapshot_path, frame)
 
+        # Classify the motion crop — but if the box is tiny (motion didn't
+        # localise a real subject), fall back to the full snapshot.
+        self._classify_path = self._snapshot_path
         if bbox is not None:
             x1, y1, x2, y2 = bbox
             crop = frame[y1:y2, x1:x2]
-            self._classify_path = os.path.join(clip_dir, "crop.jpg")
-            cv2.imwrite(self._classify_path, crop)
-        else:
-            self._classify_path = self._snapshot_path
+            if crop.shape[0] >= 96 and crop.shape[1] >= 96:
+                self._classify_path = os.path.join(clip_dir, "crop.jpg")
+                cv2.imwrite(self._classify_path, crop)
 
         self._clip_h264 = os.path.join(clip_dir, "clip.h264")
         self._detector.start_clip(self._clip_h264)
@@ -56,14 +60,19 @@ class Recorder:
 
     def _finalise(self):
         self._detector.stop_clip()
+        # Remux before clearing _recording, so clip_path() is ready the
+        # moment the main loop sees recording has finished.
+        self._clip_mp4 = self._remux_to_mp4(self._clip_h264)
         self._recording = False
-        self._remux_to_mp4(self._clip_h264)
 
     @staticmethod
     def _remux_to_mp4(h264_path):
-        """Wrap raw H.264 into .mp4 — a stream copy, no re-encoding."""
+        """Wrap raw H.264 into .mp4 — a stream copy, no re-encoding.
+
+        Returns the .mp4 path, or the .h264 path if the remux failed.
+        """
         if not h264_path or not os.path.exists(h264_path):
-            return
+            return None
         mp4_path = h264_path[:-5] + ".mp4"
         try:
             subprocess.run(
@@ -72,8 +81,10 @@ class Recorder:
                 check=True, timeout=30,
             )
             os.remove(h264_path)
+            return mp4_path
         except Exception as e:
             print(f"[recorder] mp4 remux skipped, kept .h264: {e}")
+            return h264_path
 
     def snapshot_path(self):
         return self._snapshot_path
@@ -81,6 +92,10 @@ class Recorder:
     def classify_path(self):
         """The image the classifier should use — the motion crop if available."""
         return self._classify_path
+
+    def clip_path(self):
+        """The finished clip (.mp4, or .h264 if the remux failed), or None."""
+        return self._clip_mp4
 
     def is_recording(self):
         return self._recording

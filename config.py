@@ -15,20 +15,14 @@ MIN_CONTOUR_AREA = int(os.getenv("MIN_CONTOUR_AREA", 1500))
 # Reject motion blobs larger than this fraction of the ROI — a real bird
 # never fills most of the feeder; feeder sway / lighting changes do.
 MOTION_MAX_AREA_FRAC = float(os.getenv("MOTION_MAX_AREA_FRAC", 0.6))
+# Consecutive motion-detection cycles required before triggering a capture —
+# lets a bird land and settle, and ignores brief transient motion.
+MOTION_CONSECUTIVE = int(os.getenv("MOTION_CONSECUTIVE", 3))
 
 NOTIFICATION_COOLDOWN = int(os.getenv("NOTIFICATION_COOLDOWN", 30))
 
 # Minimum bird-ID confidence (%) required to send a Telegram notification.
 CONFIDENCE_THRESHOLD = float(os.getenv("CONFIDENCE_THRESHOLD", 60))
-
-# Species to never notify about — the classifier always returns *some* bird,
-# so birdless frames get a confident wrong guess. Comma-separated, matched
-# case-insensitively against the classifier label.
-IGNORED_SPECIES = {
-    s.strip().lower()
-    for s in os.getenv("IGNORED_SPECIES", "").split(",")
-    if s.strip()
-}
 
 PRE_BUFFER_SECONDS = int(os.getenv("PRE_BUFFER_SECONDS", 3))
 POST_TRIGGER_SECONDS = int(os.getenv("POST_TRIGGER_SECONDS", 7))

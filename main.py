@@ -6,8 +6,7 @@ from recorder import Recorder
 from classifier import classify_bird
 from notifier import send_notification
 import streamer
-from config import (NOTIFICATION_COOLDOWN, STREAM_PORT, CONFIDENCE_THRESHOLD,
-                    IGNORED_SPECIES)
+from config import NOTIFICATION_COOLDOWN, STREAM_PORT, MOTION_CONSECUTIVE
 
 _running = True
 
@@ -21,21 +20,16 @@ def _handle_sigint(sig, frame):
 BIRD_ID_ENABLED = True
 
 
-def _classify_and_notify(snapshot: str, classify_img: str):
+def _classify_and_notify(clip: str, snapshot: str, classify_img: str):
     if BIRD_ID_ENABLED:
         print(f"Classifying {classify_img}...")
         species, confidence = classify_bird(classify_img)
         print(f"Result: {species} ({confidence}%)")
-        if confidence < CONFIDENCE_THRESHOLD:
-            print(f"Confidence below {CONFIDENCE_THRESHOLD}% — skipping notification.")
-            return
-        if species.lower() in IGNORED_SPECIES:
-            print(f"Species '{species}' is in the ignore list — skipping notification.")
-            return
     else:
         species, confidence = "Motion detected", 0.0
-    send_notification(snapshot, species, confidence)
-    print("Telegram notification sent.")
+    media = clip if clip else snapshot
+    send_notification(media, species, confidence)
+    print(f"Telegram notification sent ({'clip' if clip else 'snapshot'}).")
 
 
 def main():
@@ -52,6 +46,7 @@ def main():
 
     last_notification_time = 0.0
     frame_count = 0
+    motion_streak = 0
 
     # The hardware encoder records clips independently at full camera fps,
     # so this loop only needs frames for the preview stream and motion
@@ -76,18 +71,25 @@ def main():
 
             # Motion detection is the heaviest per-frame cost — run it only
             # every 10th frame (the trigger never acted more often anyway).
+            # Require sustained motion across several detection cycles
+            # before recording — lets a bird land and settle, and rejects
+            # brief transient motion.
             if frame_count % 10 == 0:
                 bbox = detector.detect_motion(frame)
-                if bbox and not recorder.is_recording() and cooldown_elapsed:
-                    print("Motion detected — saving clip + snapshot")
+                motion_streak = motion_streak + 1 if bbox else 0
+                if (motion_streak >= MOTION_CONSECUTIVE
+                        and not recorder.is_recording() and cooldown_elapsed):
+                    print("Sustained motion — recording clip + snapshot")
                     recorder.trigger(frame, bbox)
+                    motion_streak = 0
 
             snapshot = recorder.snapshot_path()
             if snapshot and not recorder.is_recording() and cooldown_elapsed:
                 last_notification_time = now
                 classify_img = recorder.classify_path()
+                clip = recorder.clip_path()
                 recorder._snapshot_path = None
-                pool.submit(_classify_and_notify, snapshot, classify_img)
+                pool.submit(_classify_and_notify, clip, snapshot, classify_img)
 
             elapsed = time.time() - loop_start
             if elapsed < LOOP_INTERVAL:

@@ -1,8 +1,9 @@
+import os
 import threading
 import time
 import cv2
-from flask import Flask, Response, request, jsonify
-from config import STREAM_PORT, MOTION_ROI, MOTION_ROI_OVERLAY
+from flask import Flask, Response, request, jsonify, send_from_directory
+from config import STREAM_PORT, MOTION_ROI, MOTION_ROI_OVERLAY, CAPTURES_DIR
 
 app = Flask(__name__)
 
@@ -145,6 +146,7 @@ def index():
     <label>R <input type="range" id="red" min="1" max="4" step="0.1" value="2.0" oninput="setGains()"></label>
     <label>B <input type="range" id="blue" min="1" max="4" step="0.1" value="2.0" oninput="setGains()"></label>
     <button onclick="resetAwb()">Reset</button>
+    <a href="/captures" style="margin-left:auto;color:#2a7;font-size:14px;text-decoration:none;">&#128193; Captures</a>
   </div>
   <script>
     function setAwb(mode) {
@@ -163,6 +165,47 @@ def index():
   </script>
 </body>
 </html>"""
+
+
+@app.route("/captures")
+def captures_index():
+    cards = []
+    for name in sorted(os.listdir(CAPTURES_DIR), reverse=True):
+        d = os.path.join(CAPTURES_DIR, name)
+        if not os.path.isdir(d):
+            continue
+        files = set(os.listdir(d))
+        thumb = (f'<a href="/captures/{name}/snapshot.jpg">'
+                 f'<img src="/captures/{name}/snapshot.jpg" loading="lazy"></a>'
+                 if "snapshot.jpg" in files else '<div class="none">no snapshot</div>')
+        clip = next((f for f in ("clip.mp4", "clip.h264") if f in files), None)
+        clip_link = (f'<a href="/captures/{name}/{clip}">&#9654; clip</a>'
+                     if clip else '<span class="none">no clip</span>')
+        cards.append(f'<div class="card"><div class="ts">{name}</div>'
+                     f'{thumb}<div class="links">{clip_link}</div></div>')
+    body = "".join(cards) or "<p style='padding:12px'>No captures yet.</p>"
+    return f"""<!DOCTYPE html><html><head>
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<style>
+  body {{ margin:0; background:#111; color:#eee; font-family:sans-serif; }}
+  h1 {{ font-size:17px; padding:12px; margin:0; }}
+  a {{ color:#2a7; text-decoration:none; }}
+  .grid {{ display:grid; grid-template-columns:repeat(auto-fill,minmax(220px,1fr));
+           gap:10px; padding:12px; }}
+  .card {{ background:#1c1c1c; border-radius:8px; overflow:hidden; }}
+  .card img {{ width:100%; display:block; }}
+  .ts {{ font-size:12px; padding:6px 8px; color:#aaa; }}
+  .links {{ padding:8px; }}
+  .none {{ color:#666; font-size:13px; padding:8px; }}
+</style></head><body>
+<h1>Captures &middot; <a href="/">&larr; live stream</a></h1>
+<div class="grid">{body}</div>
+</body></html>"""
+
+
+@app.route("/captures/<path:relpath>")
+def captures_file(relpath):
+    return send_from_directory(CAPTURES_DIR, relpath)
 
 
 def start(daemon=True):

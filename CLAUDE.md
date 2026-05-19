@@ -89,13 +89,17 @@ software encoding (`cv2.VideoWriter`) spiked CPU ~60% and overheated the Pi.
   (`MOTION_ROI_OVERLAY`) for visual tuning.
 - `detect_motion()` returns the **bounding box** of bird-plausible motion, or
   `None`. Blobs too small (noise) or too large (`MOTION_MAX_AREA_FRAC` —
-  feeder sway / lighting changes) are rejected. The classifier runs on a
-  **crop of that box** (`crop.jpg`), not the whole frame, so it sees the bird
-  rather than the static suet balls. Telegram still gets the full snapshot.
-- Telegram notifications are only sent when bird-ID confidence exceeds
-  `CONFIDENCE_THRESHOLD` (default 60%) and the species is not in
-  `IGNORED_SPECIES` (the classifier always returns *some* bird, so
-  birdless frames get a confident wrong guess — e.g. "wood duck").
+  feeder sway / lighting changes) are rejected.
+- A capture only triggers after `MOTION_CONSECUTIVE` consecutive detection
+  cycles of motion — lets a bird land/settle and rejects brief transients.
+- The classifier runs on a **crop of the motion box** (`crop.jpg`) so it sees
+  the bird, not the whole frame — but falls back to the full snapshot if the
+  crop is tiny (<96px).
+- On a trigger the **~10s clip** (pre-roll + post-trigger) is sent to Telegram,
+  with species + confidence as the caption. (No confidence/species filtering
+  currently — the confidence gate was removed.)
+- Captures are browsable over HTTP at `/captures` on the stream port; files
+  are served from `/captures/<dir>/<file>`.
 
 ## Development
 
