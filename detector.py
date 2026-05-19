@@ -23,14 +23,19 @@ class MotionDetector:
     def open(self):
         if _USE_PICAMERA:
             from picamera2 import Picamera2
+            from libcamera import Transform
             from night_mode import current_controls, mode_name
             self._cam = Picamera2()
             config = self._cam.create_video_configuration(
-                main={"size": (1280, 720), "format": "BGR888"}
+                main={"size": (1280, 720), "format": "BGR888"},
+                controls={"FrameRate": 15},
+                # Camera is mounted upside down — flip in the ISP (free)
+                # instead of rotating every frame on the CPU.
+                transform=Transform(hflip=1, vflip=1),
             )
             self._cam.configure(config)
             self._cam.start()
-            self._fps = 25.0
+            self._fps = 15.0
             self._frame_size = (1280, 720)
             self._current_mode = mode_name()
             self._cam.set_controls(current_controls())
@@ -65,8 +70,7 @@ class MotionDetector:
     def read_frame(self):
         """Return the latest frame, or None on read failure."""
         if _USE_PICAMERA:
-            frame = self._cam.capture_array("main")
-            return cv2.rotate(frame, cv2.ROTATE_180)
+            return self._cam.capture_array("main")
         ret, frame = self._cam.read()
         return frame if ret else None
 
