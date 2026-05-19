@@ -10,6 +10,11 @@ class MotionDetector:
         self.bg_subtractor = cv2.createBackgroundSubtractorMOG2(
             history=500, varThreshold=MOTION_THRESHOLD, detectShadows=False
         )
+        # Motion detection runs on a half-size frame to cut CPU; contour
+        # areas there are quartered, so scale the threshold to match.
+        self._motion_scale = 0.5
+        self._min_area = MIN_CONTOUR_AREA * self._motion_scale ** 2
+        self._kernel = np.ones((3, 3), np.uint8)
         self._cam = None
         self._fps = 25.0
         self._frame_size = (1280, 720)
@@ -58,21 +63,21 @@ class MotionDetector:
             print(f"[camera] Switched to {new_mode} mode")
 
     def read_frame(self):
-        """Return (frame, motion_detected). frame is None on read failure."""
+        """Return the latest frame, or None on read failure."""
         if _USE_PICAMERA:
             frame = self._cam.capture_array("main")
-            frame = cv2.rotate(frame, cv2.ROTATE_180)
-        else:
-            ret, frame = self._cam.read()
-            if not ret:
-                return None, False
-        return frame, self._detect_motion(frame)
+            return cv2.rotate(frame, cv2.ROTATE_180)
+        ret, frame = self._cam.read()
+        return frame if ret else None
 
-    def _detect_motion(self, frame):
-        fg_mask = self.bg_subtractor.apply(frame)
-        fg_mask = cv2.morphologyEx(fg_mask, cv2.MORPH_OPEN, np.ones((3, 3), np.uint8))
+    def detect_motion(self, frame):
+        """Background-subtraction motion check on a downscaled frame."""
+        small = cv2.resize(frame, None, fx=self._motion_scale, fy=self._motion_scale,
+                           interpolation=cv2.INTER_AREA)
+        fg_mask = self.bg_subtractor.apply(small)
+        fg_mask = cv2.morphologyEx(fg_mask, cv2.MORPH_OPEN, self._kernel)
         contours, _ = cv2.findContours(fg_mask, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
-        return any(cv2.contourArea(c) >= MIN_CONTOUR_AREA for c in contours)
+        return any(cv2.contourArea(c) >= self._min_area for c in contours)
 
     def fps(self):
         return self._fps
