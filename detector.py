@@ -28,7 +28,9 @@ class MotionDetector:
             from libcamera import Transform
             self._cam = Picamera2()
             config = self._cam.create_video_configuration(
-                main={"size": (1280, 720), "format": "BGR888"},
+                # picamera2 quirk: "RGB888" delivers arrays in B,G,R order —
+                # i.e. OpenCV-native. "BGR888" would swap red and blue.
+                main={"size": (1280, 720), "format": "RGB888"},
                 controls={"FrameRate": 30},
                 # Camera is mounted upside down — flip in the ISP (free)
                 # instead of rotating every frame on the CPU.
