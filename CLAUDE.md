@@ -70,6 +70,9 @@ software encoding (`cv2.VideoWriter`) spiked CPU ~60% and overheated the Pi.
 - `BIRD_ID_ENABLED` in `main.py` is `True` — species classification runs on
   each motion snapshot via the Hugging Face API.
 - Camera mounted upside down — flipped in the ISP (`Transform`), not on CPU.
+- Camera `main` stream format is `RGB888` — **do not change to `BGR888`**.
+  picamera2's `RGB888` delivers numpy arrays in B,G,R order (OpenCV-native);
+  `BGR888` swaps red and blue (this was the long-standing "blue tint" bug).
 - No forced camera controls — the camera runs its own auto AE/AWB. The only
   thing touching the image is the ISP flip. (The stream's `/control/awb` and
   `/control/gains` endpoints can set white balance at runtime, but only when
