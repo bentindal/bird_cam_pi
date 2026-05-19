@@ -1,11 +1,21 @@
 import threading
+import time
 import cv2
 from flask import Flask, Response, request, jsonify
 from config import STREAM_PORT
 
 app = Flask(__name__)
-_latest_frame = None
-_lock = threading.Lock()
+
+# Cap the MJPEG encode rate — smooth enough for a bird cam, and far cheaper
+# than JPEG-encoding every camera frame.
+_STREAM_FPS = 12
+_STREAM_INTERVAL = 1.0 / _STREAM_FPS
+
+_latest_jpeg = None
+_frame_version = 0
+_last_encode = 0.0
+_client_count = 0
+_cond = threading.Condition()
 _detector = None
 
 # Values must match libcamera's AwbModeEnum
@@ -26,23 +36,57 @@ def set_detector(detector):
 
 
 def update_frame(frame):
-    global _latest_frame
-    _, jpeg = cv2.imencode(".jpg", frame, [cv2.IMWRITE_JPEG_QUALITY, 70])
-    with _lock:
-        _latest_frame = jpeg.tobytes()
+    """Encode a frame for the stream.
+
+    No-ops when nobody is watching, and throttles encoding to _STREAM_FPS,
+    so an idle camera costs nothing and a watched one costs ~12 encodes/sec.
+    """
+    global _latest_jpeg, _frame_version, _last_encode
+    if _client_count == 0:
+        return
+    now = time.monotonic()
+    if now - _last_encode < _STREAM_INTERVAL:
+        return
+    ok, jpeg = cv2.imencode(".jpg", frame, [cv2.IMWRITE_JPEG_QUALITY, 70])
+    if not ok:
+        return
+    with _cond:
+        _last_encode = now
+        _latest_jpeg = jpeg.tobytes()
+        _frame_version += 1
+        _cond.notify_all()
 
 
 def _generate():
+    """Yield each new frame exactly once, blocking until one is ready.
+
+    Replaces a busy-wait loop that pinned a CPU core; this sleeps until
+    update_frame() signals a new frame.
+    """
+    last_version = -1
     while True:
-        with _lock:
-            frame = _latest_frame
+        with _cond:
+            ready = _cond.wait_for(lambda: _frame_version != last_version, timeout=5.0)
+            if not ready:
+                continue
+            frame = _latest_jpeg
+            last_version = _frame_version
         if frame:
             yield (b"--frame\r\nContent-Type: image/jpeg\r\n\r\n" + frame + b"\r\n")
 
 
 @app.route("/stream")
 def stream():
-    return Response(_generate(), mimetype="multipart/x-mixed-replace; boundary=frame")
+    def _tracked():
+        global _client_count
+        with _cond:
+            _client_count += 1
+        try:
+            yield from _generate()
+        finally:
+            with _cond:
+                _client_count -= 1
+    return Response(_tracked(), mimetype="multipart/x-mixed-replace; boundary=frame")
 
 
 @app.route("/control/awb", methods=["POST"])

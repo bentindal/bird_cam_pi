@@ -50,7 +50,7 @@ def main():
     print("Watching for movement. Press Ctrl+C to stop.")
     with ThreadPoolExecutor(max_workers=2) as pool:
         while _running:
-            frame, motion = detector.read_frame()
+            frame = detector.read_frame()
             frame_count += 1
             if frame is None:
                 print("Camera read failed — retrying...")
@@ -67,9 +67,12 @@ def main():
                 detector.apply_mode_if_changed()
                 last_mode_check_time = now
 
-            if motion and frame_count % 10 == 0 and not recorder.is_recording() and cooldown_elapsed:
-                print("Motion detected — saving clip + snapshot")
-                recorder.trigger(frame)
+            # Motion detection is the heaviest per-frame cost — run it only
+            # every 10th frame (the trigger never acted more often anyway).
+            if frame_count % 10 == 0 and detector.detect_motion(frame):
+                if not recorder.is_recording() and cooldown_elapsed:
+                    print("Motion detected — saving clip + snapshot")
+                    recorder.trigger(frame)
 
             snapshot = recorder.snapshot_path()
             if snapshot and not recorder.is_recording() and cooldown_elapsed:
