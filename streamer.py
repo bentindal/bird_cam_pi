@@ -8,13 +8,15 @@ _latest_frame = None
 _lock = threading.Lock()
 _detector = None
 
+# Values must match libcamera's AwbModeEnum
 AWB_MODES = {
     "auto": 0,
-    "tungsten": 1,
-    "fluorescent": 2,
-    "indoor": 3,
-    "daylight": 4,
-    "cloudy": 5,
+    "incandescent": 1,
+    "tungsten": 2,
+    "fluorescent": 3,
+    "indoor": 4,
+    "daylight": 5,
+    "cloudy": 6,
 }
 
 
