@@ -42,7 +42,6 @@ snapshot → classify (optional) → send Telegram notification.
 | `classifier.py` | Hugging Face bird species API, rate-limited (100 calls/hr) |
 | `notifier.py` | Telegram photo + caption |
 | `streamer.py` | Flask MJPEG stream + live camera controls UI |
-| `night_mode.py` | Sunrise/sunset camera switching (London tz, `astral`) |
 | `config.py` | Loads all settings from `.env` |
 
 ### Video pipeline (hardware-encoded)
@@ -71,9 +70,9 @@ software encoding (`cv2.VideoWriter`) spiked CPU ~60% and overheated the Pi.
 - `BIRD_ID_ENABLED` in `main.py` is `True` — species classification runs on
   each motion snapshot via the Hugging Face API.
 - Camera mounted upside down — flipped in the ISP (`Transform`), not on CPU.
-- `AwbMode` is `Daylight` (`night_mode.py` `DAY_CONTROLS`). NOTE: the value
-  used is `4`, which is libcamera's *Indoor* mode — `Daylight` is actually
-  `5`. A slight blue tint on the IMX708 remains as a result.
+- Fixed camera controls live in `detector.py` `CAMERA_CONTROLS` —
+  `AwbMode: 5` (Daylight) corrects the IMX708's blue tint. There is no
+  day/night switching; the camera runs one fixed profile.
 - Clip recording requires the picamera2 path (the hardware encoder). On a
   Mac webcam (`CAMERA_SOURCE=0`), snapshots/notifications work but clips do not.
 - Config comes from `.env` (not committed); see `config.py` for variables and
@@ -86,11 +85,6 @@ software encoding (`cv2.VideoWriter`) spiked CPU ~60% and overheated the Pi.
   (`MOTION_ROI_OVERLAY`) for visual tuning.
 - Telegram notifications are only sent when bird-ID confidence exceeds
   `CONFIDENCE_THRESHOLD` (default 60%).
-
-## Open items
-
-- **AwbMode value** — currently `4` (Indoor); should be `5` (Daylight) to
-  fully correct the IMX708 blue tint. Left as-is per user request.
 
 ## Development
 

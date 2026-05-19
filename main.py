@@ -47,7 +47,6 @@ def main():
     streamer.start()
 
     last_notification_time = 0.0
-    last_mode_check_time = 0.0
     frame_count = 0
 
     # The hardware encoder records clips independently at full camera fps,
@@ -70,10 +69,6 @@ def main():
 
             now = time.time()
             cooldown_elapsed = (now - last_notification_time) >= NOTIFICATION_COOLDOWN
-
-            if now - last_mode_check_time >= 60:
-                detector.apply_mode_if_changed()
-                last_mode_check_time = now
 
             # Motion detection is the heaviest per-frame cost — run it only
             # every 10th frame (the trigger never acted more often anyway).

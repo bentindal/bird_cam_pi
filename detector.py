@@ -5,6 +5,14 @@ from config import (CAMERA_SOURCE, MOTION_THRESHOLD, MIN_CONTOUR_AREA,
 
 _USE_PICAMERA = CAMERA_SOURCE == "picamera"
 
+# Fixed camera colour/exposure controls (libcamera).
+# AwbMode 5 = Daylight — corrects the IMX708's cool/blue bias.
+CAMERA_CONTROLS = {
+    "AeEnable": True,
+    "AwbEnable": True,
+    "AwbMode": 5,
+}
+
 
 class MotionDetector:
     def __init__(self):
@@ -21,13 +29,11 @@ class MotionDetector:
         self._circular = None
         self._fps = 25.0
         self._frame_size = (1280, 720)
-        self._current_mode = None
 
     def open(self):
         if _USE_PICAMERA:
             from picamera2 import Picamera2
             from libcamera import Transform
-            from night_mode import current_controls, mode_name
             self._cam = Picamera2()
             config = self._cam.create_video_configuration(
                 main={"size": (1280, 720), "format": "BGR888"},
@@ -40,8 +46,7 @@ class MotionDetector:
             self._cam.start()
             self._fps = 30.0
             self._frame_size = (1280, 720)
-            self._current_mode = mode_name()
-            self._cam.set_controls(current_controls())
+            self._cam.set_controls(CAMERA_CONTROLS)
 
             # Hardware H.264 encoder runs continuously, keeping the last
             # PRE_BUFFER_SECONDS of footage in a ring buffer. Recording a
@@ -53,7 +58,7 @@ class MotionDetector:
                 buffersize=int(self._fps * PRE_BUFFER_SECONDS)
             )
             self._cam.start_encoder(self._encoder, self._circular)
-            print(f"[camera] Starting in {self._current_mode} mode")
+            print("[camera] Started")
         else:
             self._cam = cv2.VideoCapture(CAMERA_SOURCE)
             if not self._cam.isOpened():
@@ -69,17 +74,6 @@ class MotionDetector:
     def apply_controls(self, controls: dict):
         if _USE_PICAMERA and self._cam:
             self._cam.set_controls(controls)
-
-    def apply_mode_if_changed(self):
-        """Call periodically to switch day/night settings automatically."""
-        if not _USE_PICAMERA:
-            return
-        from night_mode import current_controls, mode_name
-        new_mode = mode_name()
-        if new_mode != self._current_mode:
-            self._current_mode = new_mode
-            self._cam.set_controls(current_controls())
-            print(f"[camera] Switched to {new_mode} mode")
 
     def read_frame(self):
         """Return the latest frame, or None on read failure."""

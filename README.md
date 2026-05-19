@@ -4,12 +4,11 @@ Raspberry Pi bird feeder camera with motion detection, automatic bird species id
 
 ## Features
 
-- **Motion detection** — OpenCV background subtraction, checked every 10 frames
-- **Clip + snapshot recording** — 3s pre-buffer + 7s post-trigger clip saved locally
+- **Motion detection** — OpenCV background subtraction, restricted to a configurable region of interest
+- **Clip + snapshot recording** — hardware-encoded H.264 clips (3s pre-buffer + 7s post-trigger) saved locally
 - **Bird species ID** — Hugging Face inference API (`chriamue/bird-species-classifier`), capped at 100 calls/hour
-- **Telegram alerts** — photo, species name, confidence score, and timestamp sent to your phone
+- **Telegram alerts** — photo, species name, confidence score, and timestamp sent to your phone (only above a confidence threshold)
 - **Live MJPEG stream** — viewable in any browser at `http://<pi-ip>:5000`
-- **Auto day/night mode** — switches camera to high-gain long-exposure settings after sunset (London timezone, using `astral`)
 - **Runs as a systemd service** — starts on boot, restarts automatically on crash
 
 ## Hardware
@@ -24,12 +23,11 @@ Raspberry Pi bird feeder camera with motion detection, automatic bird species id
 ```
 bird_cam_pi/
 ├── main.py          — main loop: motion → record → classify → notify
-├── detector.py      — picamera2 / OpenCV motion detection
-├── recorder.py      — circular pre-buffer, clip + snapshot saving
+├── detector.py      — picamera2 / OpenCV capture, motion detection, hardware encoder
+├── recorder.py      — snapshot + clip orchestration (hardware H.264 encoder)
 ├── classifier.py    — Hugging Face bird species API with rate limiting
 ├── notifier.py      — Telegram photo + caption
 ├── streamer.py      — MJPEG HTTP stream via Flask
-├── night_mode.py    — sunrise/sunset switching for London
 ├── config.py        — loads all settings from .env
 ├── captures/        — saved clips and snapshots (gitignored)
 └── .env.example     — config template
