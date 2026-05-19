@@ -70,9 +70,10 @@ software encoding (`cv2.VideoWriter`) spiked CPU ~60% and overheated the Pi.
 - `BIRD_ID_ENABLED` in `main.py` is `True` — species classification runs on
   each motion snapshot via the Hugging Face API.
 - Camera mounted upside down — flipped in the ISP (`Transform`), not on CPU.
-- Fixed camera controls live in `detector.py` `CAMERA_CONTROLS` —
-  `AwbMode: 5` (Daylight) corrects the IMX708's blue tint. There is no
-  day/night switching; the camera runs one fixed profile.
+- No forced camera controls — the camera runs its own auto AE/AWB. The only
+  thing touching the image is the ISP flip. (The stream's `/control/awb` and
+  `/control/gains` endpoints can set white balance at runtime, but only when
+  the user clicks the stream-UI buttons.)
 - Clip recording requires the picamera2 path (the hardware encoder). On a
   Mac webcam (`CAMERA_SOURCE=0`), snapshots/notifications work but clips do not.
 - Config comes from `.env` (not committed); see `config.py` for variables and

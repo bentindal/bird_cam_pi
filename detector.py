@@ -5,14 +5,6 @@ from config import (CAMERA_SOURCE, MOTION_THRESHOLD, MIN_CONTOUR_AREA,
 
 _USE_PICAMERA = CAMERA_SOURCE == "picamera"
 
-# Fixed camera colour/exposure controls (libcamera).
-# AwbMode 5 = Daylight — corrects the IMX708's cool/blue bias.
-CAMERA_CONTROLS = {
-    "AeEnable": True,
-    "AwbEnable": True,
-    "AwbMode": 5,
-}
-
 
 class MotionDetector:
     def __init__(self):
@@ -46,7 +38,7 @@ class MotionDetector:
             self._cam.start()
             self._fps = 30.0
             self._frame_size = (1280, 720)
-            self._cam.set_controls(CAMERA_CONTROLS)
+            # No forced white balance — the camera runs its own auto AWB.
 
             # Hardware H.264 encoder runs continuously, keeping the last
             # PRE_BUFFER_SECONDS of footage in a ring buffer. Recording a
