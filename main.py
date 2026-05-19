@@ -37,7 +37,7 @@ def main():
     detector = MotionDetector()
     detector.open()
 
-    recorder = Recorder(fps=detector.fps(), frame_size=detector.frame_size())
+    recorder = Recorder(detector)
 
     streamer.set_detector(detector)
     print(f"Stream available at http://localhost:{STREAM_PORT}")
@@ -47,9 +47,15 @@ def main():
     last_mode_check_time = 0.0
     frame_count = 0
 
+    # The hardware encoder records clips independently at full camera fps,
+    # so this loop only needs frames for the preview stream and motion
+    # detection — pace it well below the camera rate to save CPU.
+    LOOP_INTERVAL = 1.0 / 15
+
     print("Watching for movement. Press Ctrl+C to stop.")
     with ThreadPoolExecutor(max_workers=2) as pool:
         while _running:
+            loop_start = time.time()
             frame = detector.read_frame()
             frame_count += 1
             if frame is None:
@@ -58,7 +64,6 @@ def main():
                 continue
 
             streamer.update_frame(frame)
-            recorder.push_frame(frame)
 
             now = time.time()
             cooldown_elapsed = (now - last_notification_time) >= NOTIFICATION_COOLDOWN
@@ -79,6 +84,10 @@ def main():
                 last_notification_time = now
                 recorder._snapshot_path = None
                 pool.submit(_classify_and_notify, snapshot)
+
+            elapsed = time.time() - loop_start
+            if elapsed < LOOP_INTERVAL:
+                time.sleep(LOOP_INTERVAL - elapsed)
 
     detector.close()
     recorder.close()

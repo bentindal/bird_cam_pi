@@ -1,60 +1,76 @@
-import cv2
 import os
-from collections import deque
+import subprocess
+import threading
+import cv2
 from datetime import datetime
-from config import CAPTURES_DIR, PRE_BUFFER_SECONDS, POST_TRIGGER_SECONDS
+from config import CAPTURES_DIR, POST_TRIGGER_SECONDS
 
 
 class Recorder:
-    def __init__(self, fps, frame_size):
-        self.fps = fps
-        self.frame_size = frame_size
-        pre_buffer_frames = int(PRE_BUFFER_SECONDS * fps)
-        self.pre_buffer = deque(maxlen=pre_buffer_frames)
-        self._writer = None
-        self._post_frames_remaining = 0
-        self._current_dir = None
-        self._snapshot_path = None
+    """Saves a snapshot + an H.264 clip when motion triggers.
 
-    def push_frame(self, frame):
-        """Always call with every frame. Handles pre-buffer and post-trigger recording."""
-        self.pre_buffer.append(frame.copy())
-        if self._writer and self._post_frames_remaining > 0:
-            self._writer.write(frame)
-            self._post_frames_remaining -= 1
-            if self._post_frames_remaining == 0:
-                self._finalise()
+    Video is encoded by the Pi's hardware H.264 encoder via the camera's
+    CircularOutput (set up in MotionDetector), so the pre-roll is held in
+    the encoder's ring buffer and recording costs almost no CPU here.
+    """
+
+    def __init__(self, detector):
+        self._detector = detector
+        self._recording = False
+        self._snapshot_path = None
+        self._clip_h264 = None
+        self._timer = None
 
     def trigger(self, frame):
-        """Call when motion is detected. Saves snapshot and starts clip recording."""
-        if self._writer:
-            return  # already recording
-        ts = datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
-        self._current_dir = os.path.join(CAPTURES_DIR, ts)
-        os.makedirs(self._current_dir, exist_ok=True)
+        """Call when motion is detected: save a snapshot and start a clip."""
+        if self._recording:
+            return
+        self._recording = True
 
-        self._snapshot_path = os.path.join(self._current_dir, "snapshot.jpg")
+        ts = datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
+        clip_dir = os.path.join(CAPTURES_DIR, ts)
+        os.makedirs(clip_dir, exist_ok=True)
+
+        self._snapshot_path = os.path.join(clip_dir, "snapshot.jpg")
         cv2.imwrite(self._snapshot_path, frame)
 
-        clip_path = os.path.join(self._current_dir, "clip.mp4")
-        fourcc = cv2.VideoWriter_fourcc(*"mp4v")
-        self._writer = cv2.VideoWriter(clip_path, fourcc, self.fps, self.frame_size)
+        self._clip_h264 = os.path.join(clip_dir, "clip.h264")
+        self._detector.start_clip(self._clip_h264)
 
-        for buffered in self.pre_buffer:
-            self._writer.write(buffered)
+        self._timer = threading.Timer(POST_TRIGGER_SECONDS, self._finalise)
+        self._timer.daemon = True
+        self._timer.start()
 
-        self._post_frames_remaining = int(POST_TRIGGER_SECONDS * self.fps)
+    def _finalise(self):
+        self._detector.stop_clip()
+        self._recording = False
+        self._remux_to_mp4(self._clip_h264)
+
+    @staticmethod
+    def _remux_to_mp4(h264_path):
+        """Wrap raw H.264 into .mp4 — a stream copy, no re-encoding."""
+        if not h264_path or not os.path.exists(h264_path):
+            return
+        mp4_path = h264_path[:-5] + ".mp4"
+        try:
+            subprocess.run(
+                ["ffmpeg", "-y", "-r", "30", "-i", h264_path, "-c", "copy", mp4_path],
+                stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
+                check=True, timeout=30,
+            )
+            os.remove(h264_path)
+        except Exception as e:
+            print(f"[recorder] mp4 remux skipped, kept .h264: {e}")
 
     def snapshot_path(self):
         return self._snapshot_path
 
     def is_recording(self):
-        return self._writer is not None
-
-    def _finalise(self):
-        self._writer.release()
-        self._writer = None
+        return self._recording
 
     def close(self):
-        if self._writer:
-            self._writer.release()
+        if self._timer:
+            self._timer.cancel()
+        if self._recording:
+            self._detector.stop_clip()
+            self._recording = False

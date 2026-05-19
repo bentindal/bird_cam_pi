@@ -1,6 +1,6 @@
 import cv2
 import numpy as np
-from config import CAMERA_SOURCE, MOTION_THRESHOLD, MIN_CONTOUR_AREA
+from config import CAMERA_SOURCE, MOTION_THRESHOLD, MIN_CONTOUR_AREA, PRE_BUFFER_SECONDS
 
 _USE_PICAMERA = CAMERA_SOURCE == "picamera"
 
@@ -16,6 +16,8 @@ class MotionDetector:
         self._min_area = MIN_CONTOUR_AREA * self._motion_scale ** 2
         self._kernel = np.ones((3, 3), np.uint8)
         self._cam = None
+        self._encoder = None
+        self._circular = None
         self._fps = 25.0
         self._frame_size = (1280, 720)
         self._current_mode = None
@@ -28,17 +30,28 @@ class MotionDetector:
             self._cam = Picamera2()
             config = self._cam.create_video_configuration(
                 main={"size": (1280, 720), "format": "BGR888"},
-                controls={"FrameRate": 15},
+                controls={"FrameRate": 30},
                 # Camera is mounted upside down — flip in the ISP (free)
                 # instead of rotating every frame on the CPU.
                 transform=Transform(hflip=1, vflip=1),
             )
             self._cam.configure(config)
             self._cam.start()
-            self._fps = 15.0
+            self._fps = 30.0
             self._frame_size = (1280, 720)
             self._current_mode = mode_name()
             self._cam.set_controls(current_controls())
+
+            # Hardware H.264 encoder runs continuously, keeping the last
+            # PRE_BUFFER_SECONDS of footage in a ring buffer. Recording a
+            # clip is just dumping that buffer to a file — near-zero CPU.
+            from picamera2.encoders import H264Encoder
+            from picamera2.outputs import CircularOutput
+            self._encoder = H264Encoder(bitrate=6_000_000)
+            self._circular = CircularOutput(
+                buffersize=int(self._fps * PRE_BUFFER_SECONDS)
+            )
+            self._cam.start_encoder(self._encoder, self._circular)
             print(f"[camera] Starting in {self._current_mode} mode")
         else:
             self._cam = cv2.VideoCapture(CAMERA_SOURCE)
@@ -83,6 +96,17 @@ class MotionDetector:
         contours, _ = cv2.findContours(fg_mask, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
         return any(cv2.contourArea(c) >= self._min_area for c in contours)
 
+    def start_clip(self, path):
+        """Dump the H.264 ring buffer (pre-roll) and keep writing to `path`."""
+        if _USE_PICAMERA and self._circular:
+            self._circular.fileoutput = path
+            self._circular.start()
+
+    def stop_clip(self):
+        """Stop writing the current clip; the encoder keeps ring-buffering."""
+        if _USE_PICAMERA and self._circular:
+            self._circular.stop()
+
     def fps(self):
         return self._fps
 
@@ -92,6 +116,13 @@ class MotionDetector:
     def close(self):
         if self._cam:
             if _USE_PICAMERA:
+                if self._circular:
+                    try:
+                        self._circular.stop()
+                    except Exception:
+                        pass
+                if self._encoder:
+                    self._cam.stop_encoder()
                 self._cam.stop()
             else:
                 self._cam.release()
