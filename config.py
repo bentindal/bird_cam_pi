@@ -43,6 +43,6 @@ def _parse_roi(raw):
 # Motion detection region of interest — restricts detection to the feeder,
 # ignoring background foliage (wind in trees is a major false-trigger source).
 # Normalized (0-1) "x1,y1,x2,y2"; default estimates the feeder box.
-MOTION_ROI = _parse_roi(os.getenv("MOTION_ROI", "0.05,0.25,0.95,0.95"))
+MOTION_ROI = _parse_roi(os.getenv("MOTION_ROI", "0.18,0.48,0.84,1.0"))
 # Draw the ROI box on the live stream so it can be fine-tuned visually.
 MOTION_ROI_OVERLAY = os.getenv("MOTION_ROI_OVERLAY", "true").lower() == "true"
