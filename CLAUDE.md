@@ -13,12 +13,14 @@ bird species identification, Telegram notifications, and a live MJPEG stream.
 ## Deployment
 
 The application is deployed and running on a remote Raspberry Pi as a systemd
-service (`bird-cam.service`). The Pi is on the local network at
-**`projectmochi.local`**.
+service (`bird-cam.service`).
 
-- SSH in to operate it: `ssh pi@projectmochi.local`
-- App lives at `/home/pi/bird_cam_pi` on the Pi
-- Live stream: `http://projectmochi.local:5000`
+- Local network: `projectmochi.local` (mDNS)
+- Tailscale: hostname `projectmochi`, IP `100.86.62.4` — reachable from anywhere
+  on the tailnet (`tailscaled` is installed and enabled on boot)
+- SSH user is `mochi`: `ssh mochi@100.86.62.4` (or `ssh mochi@projectmochi`)
+- App lives at `/home/mochi/bird_cam_pi` on the Pi
+- Live stream: `http://projectmochi:5000` (or `http://100.86.62.4:5000`)
 - Service control: `sudo systemctl {status,restart} bird-cam`
 - Logs: `sudo journalctl -u bird-cam -f`
 
