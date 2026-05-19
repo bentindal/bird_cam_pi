@@ -17,7 +17,7 @@ def _handle_sigint(sig, frame):
     _running = False
 
 
-BIRD_ID_ENABLED = False
+BIRD_ID_ENABLED = True
 
 
 def _classify_and_notify(snapshot: str):

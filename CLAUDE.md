@@ -43,8 +43,8 @@ clip + snapshot → classify (optional) → send Telegram notification.
 
 ## Key facts
 
-- `BIRD_ID_ENABLED` in `main.py` is currently `False` — motion-only mode; no
-  species classification is run. Telegram still sends "Motion detected" alerts.
+- `BIRD_ID_ENABLED` in `main.py` is `True` — species classification runs on
+  each motion snapshot via the Hugging Face API.
 - Camera is mounted upside down — frames are rotated 180°.
 - `AwbMode` is set to `Daylight` to fix a blue tint on the IMX708.
 - Config comes from `.env` (not committed); see `config.py` for variables and
