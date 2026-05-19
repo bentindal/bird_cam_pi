@@ -31,30 +31,65 @@ pulling on the Pi, then restarting the service.
 
 ## Architecture
 
-`main.py` runs the loop: read frame → stream + buffer → on motion, record a
-clip + snapshot → classify (optional) → send Telegram notification.
+`main.py` runs the loop: read frame → stream → on motion, trigger a clip +
+snapshot → classify (optional) → send Telegram notification.
 
 | File | Role |
 |---|---|
-| `main.py` | Main loop, threading, cooldown logic |
-| `detector.py` | picamera2 / OpenCV capture + background-subtraction motion detection |
-| `recorder.py` | Circular pre-buffer, clip + snapshot saving |
+| `main.py` | Main loop, threading, cooldown logic, loop pacing |
+| `detector.py` | picamera2 / OpenCV capture, motion detection, hardware encoder lifecycle |
+| `recorder.py` | Snapshot + clip orchestration (drives the hardware encoder) |
 | `classifier.py` | Hugging Face bird species API, rate-limited (100 calls/hr) |
 | `notifier.py` | Telegram photo + caption |
 | `streamer.py` | Flask MJPEG stream + live camera controls UI |
 | `night_mode.py` | Sunrise/sunset camera switching (London tz, `astral`) |
 | `config.py` | Loads all settings from `.env` |
 
+### Video pipeline (hardware-encoded)
+
+Clips are encoded by the Pi 4's **hardware H.264 encoder**, not the CPU:
+
+- `detector.py` configures the camera at 30fps and starts a picamera2
+  `H264Encoder` + `CircularOutput`. The encoder runs continuously in
+  silicon, ring-buffering the last `PRE_BUFFER_SECONDS` of footage.
+- On motion, `recorder.trigger()` saves a snapshot and calls
+  `detector.start_clip()` — which just dumps the ring buffer to a file and
+  keeps writing. A `threading.Timer` calls `detector.stop_clip()` after
+  `POST_TRIGGER_SECONDS`.
+- Raw `.h264` is remuxed to `.mp4` via an ffmpeg stream-copy (no re-encode).
+- The 180° flip (camera mounted upside down) is done by the ISP via a
+  libcamera `Transform` — free, no per-frame CPU.
+- The main loop only needs frames for the preview stream and motion
+  detection, so it is **paced to 15fps** while the camera/encoder run at
+  30fps. Clip quality is decoupled from loop CPU cost.
+
+This keeps the Pi at ~48% CPU / ~56°C whether idle or recording. Earlier
+software encoding (`cv2.VideoWriter`) spiked CPU ~60% and overheated the Pi.
+
 ## Key facts
 
 - `BIRD_ID_ENABLED` in `main.py` is `True` — species classification runs on
   each motion snapshot via the Hugging Face API.
-- Camera is mounted upside down — frames are rotated 180°.
-- `AwbMode` is set to `Daylight` to fix a blue tint on the IMX708.
+- Camera mounted upside down — flipped in the ISP (`Transform`), not on CPU.
+- `AwbMode` is `Daylight` (`night_mode.py` `DAY_CONTROLS`). NOTE: the value
+  used is `4`, which is libcamera's *Indoor* mode — `Daylight` is actually
+  `5`. A slight blue tint on the IMX708 remains as a result.
+- Clip recording requires the picamera2 path (the hardware encoder). On a
+  Mac webcam (`CAMERA_SOURCE=0`), snapshots/notifications work but clips do not.
 - Config comes from `.env` (not committed); see `config.py` for variables and
   defaults. `captures/` is gitignored.
-- Motion is only checked every 10 frames; notifications respect
+- Motion is checked every 10th loop iteration; notifications respect
   `NOTIFICATION_COOLDOWN`.
+- Motion detection watches the whole frame — no region-of-interest yet, so
+  wind in background foliage can cause false triggers (see open items below).
+
+## Open items
+
+- **Region of interest for motion detection** — the feeder looks onto a leafy
+  garden; wind-moved foliage can false-trigger. Restricting motion detection
+  to the feeder tray (lower-centre of frame) would fix this. Not yet done.
+- **AwbMode value** — currently `4` (Indoor); should be `5` (Daylight) to
+  fully correct the IMX708 blue tint. Left as-is per user request.
 
 ## Development
 
