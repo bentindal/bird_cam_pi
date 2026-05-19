@@ -80,14 +80,15 @@ software encoding (`cv2.VideoWriter`) spiked CPU ~60% and overheated the Pi.
   defaults. `captures/` is gitignored.
 - Motion is checked every 10th loop iteration; notifications respect
   `NOTIFICATION_COOLDOWN`.
-- Motion detection watches the whole frame — no region-of-interest yet, so
-  wind in background foliage can cause false triggers (see open items below).
+- Motion detection is restricted to a **region of interest** (`MOTION_ROI` in
+  `.env`, normalized `x1,y1,x2,y2`) covering the feeder, so wind in background
+  foliage doesn't false-trigger. The ROI box is drawn on the live stream
+  (`MOTION_ROI_OVERLAY`) for visual tuning.
+- Telegram notifications are only sent when bird-ID confidence exceeds
+  `CONFIDENCE_THRESHOLD` (default 60%).
 
 ## Open items
 
-- **Region of interest for motion detection** — the feeder looks onto a leafy
-  garden; wind-moved foliage can false-trigger. Restricting motion detection
-  to the feeder tray (lower-centre of frame) would fix this. Not yet done.
 - **AwbMode value** — currently `4` (Indoor); should be `5` (Daylight) to
   fully correct the IMX708 blue tint. Left as-is per user request.
 

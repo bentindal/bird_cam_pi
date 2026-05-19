@@ -6,7 +6,7 @@ from recorder import Recorder
 from classifier import classify_bird
 from notifier import send_notification
 import streamer
-from config import NOTIFICATION_COOLDOWN, STREAM_PORT
+from config import NOTIFICATION_COOLDOWN, STREAM_PORT, CONFIDENCE_THRESHOLD
 
 _running = True
 
@@ -25,6 +25,9 @@ def _classify_and_notify(snapshot: str):
         print(f"Classifying {snapshot}...")
         species, confidence = classify_bird(snapshot)
         print(f"Result: {species} ({confidence}%)")
+        if confidence < CONFIDENCE_THRESHOLD:
+            print(f"Confidence below {CONFIDENCE_THRESHOLD}% — skipping notification.")
+            return
     else:
         species, confidence = "Motion detected", 0.0
     send_notification(snapshot, species, confidence)

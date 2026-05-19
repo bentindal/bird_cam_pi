@@ -15,6 +15,9 @@ MIN_CONTOUR_AREA = int(os.getenv("MIN_CONTOUR_AREA", 1500))
 
 NOTIFICATION_COOLDOWN = int(os.getenv("NOTIFICATION_COOLDOWN", 30))
 
+# Minimum bird-ID confidence (%) required to send a Telegram notification.
+CONFIDENCE_THRESHOLD = float(os.getenv("CONFIDENCE_THRESHOLD", 60))
+
 PRE_BUFFER_SECONDS = int(os.getenv("PRE_BUFFER_SECONDS", 3))
 POST_TRIGGER_SECONDS = int(os.getenv("POST_TRIGGER_SECONDS", 7))
 
@@ -24,3 +27,22 @@ CAPTURES_DIR = os.path.join(os.path.dirname(__file__), "captures")
 os.makedirs(CAPTURES_DIR, exist_ok=True)
 
 HF_MODEL_URL = "https://router.huggingface.co/hf-inference/models/chriamue/bird-species-classifier"
+
+
+def _parse_roi(raw):
+    """Parse 'x1,y1,x2,y2' normalized (0-1) coords; fall back to the whole frame."""
+    try:
+        vals = tuple(float(v) for v in raw.split(","))
+        if len(vals) == 4 and all(0.0 <= v <= 1.0 for v in vals):
+            return vals
+    except ValueError:
+        pass
+    return (0.0, 0.0, 1.0, 1.0)
+
+
+# Motion detection region of interest — restricts detection to the feeder,
+# ignoring background foliage (wind in trees is a major false-trigger source).
+# Normalized (0-1) "x1,y1,x2,y2"; default estimates the feeder box.
+MOTION_ROI = _parse_roi(os.getenv("MOTION_ROI", "0.05,0.25,0.95,0.95"))
+# Draw the ROI box on the live stream so it can be fine-tuned visually.
+MOTION_ROI_OVERLAY = os.getenv("MOTION_ROI_OVERLAY", "true").lower() == "true"

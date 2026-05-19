@@ -2,7 +2,7 @@ import threading
 import time
 import cv2
 from flask import Flask, Response, request, jsonify
-from config import STREAM_PORT
+from config import STREAM_PORT, MOTION_ROI, MOTION_ROI_OVERLAY
 
 app = Flask(__name__)
 
@@ -45,6 +45,13 @@ def update_frame(frame):
     now = time.monotonic()
     if now - _last_encode < _STREAM_INTERVAL:
         return
+    if MOTION_ROI_OVERLAY:
+        # Draw on a copy so the snapshot/clip frames stay unmarked.
+        frame = frame.copy()
+        h, w = frame.shape[:2]
+        x1, y1, x2, y2 = MOTION_ROI
+        cv2.rectangle(frame, (int(x1 * w), int(y1 * h)),
+                      (int(x2 * w), int(y2 * h)), (0, 255, 0), 2)
     ok, jpeg = cv2.imencode(".jpg", frame, [cv2.IMWRITE_JPEG_QUALITY, 70])
     if not ok:
         return

@@ -1,6 +1,7 @@
 import cv2
 import numpy as np
-from config import CAMERA_SOURCE, MOTION_THRESHOLD, MIN_CONTOUR_AREA, PRE_BUFFER_SECONDS
+from config import (CAMERA_SOURCE, MOTION_THRESHOLD, MIN_CONTOUR_AREA,
+                    PRE_BUFFER_SECONDS, MOTION_ROI)
 
 _USE_PICAMERA = CAMERA_SOURCE == "picamera"
 
@@ -88,8 +89,15 @@ class MotionDetector:
         return frame if ret else None
 
     def detect_motion(self, frame):
-        """Background-subtraction motion check on a downscaled frame."""
-        small = cv2.resize(frame, None, fx=self._motion_scale, fy=self._motion_scale,
+        """Background-subtraction motion check within the ROI of a downscaled frame.
+
+        The ROI restricts detection to the feeder, ignoring background
+        foliage so wind in trees doesn't false-trigger.
+        """
+        h, w = frame.shape[:2]
+        x1, y1, x2, y2 = MOTION_ROI
+        roi = frame[int(y1 * h):int(y2 * h), int(x1 * w):int(x2 * w)]
+        small = cv2.resize(roi, None, fx=self._motion_scale, fy=self._motion_scale,
                            interpolation=cv2.INTER_AREA)
         fg_mask = self.bg_subtractor.apply(small)
         fg_mask = cv2.morphologyEx(fg_mask, cv2.MORPH_OPEN, self._kernel)
