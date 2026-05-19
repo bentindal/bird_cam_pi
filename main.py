@@ -1,3 +1,5 @@
+import json
+import os
 import signal
 import time
 from concurrent.futures import ThreadPoolExecutor
@@ -27,6 +29,15 @@ def _classify_and_notify(clip: str, snapshot: str, classify_img: str):
         print(f"Result: {species} ({confidence}%)")
     else:
         species, confidence = "Motion detected", 0.0
+
+    # Record the sighting alongside the capture so the gallery can show it.
+    try:
+        with open(os.path.join(os.path.dirname(snapshot), "sighting.json"), "w") as f:
+            json.dump({"species": species, "confidence": confidence,
+                       "has_clip": bool(clip)}, f)
+    except Exception as e:
+        print(f"[sighting] could not write metadata: {e}")
+
     media = clip if clip else snapshot
     send_notification(media, species, confidence)
     print(f"Telegram notification sent ({'clip' if clip else 'snapshot'}).")

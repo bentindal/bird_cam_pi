@@ -1,6 +1,8 @@
+import json
 import os
 import threading
 import time
+from datetime import datetime
 import cv2
 from flask import Flask, Response, request, jsonify, send_from_directory
 from config import STREAM_PORT, MOTION_ROI, MOTION_ROI_OVERLAY, CAPTURES_DIR
@@ -146,7 +148,7 @@ def index():
     <label>R <input type="range" id="red" min="1" max="4" step="0.1" value="2.0" oninput="setGains()"></label>
     <label>B <input type="range" id="blue" min="1" max="4" step="0.1" value="2.0" oninput="setGains()"></label>
     <button onclick="resetAwb()">Reset</button>
-    <a href="/captures" style="margin-left:auto;color:#2a7;font-size:14px;text-decoration:none;">&#128193; Captures</a>
+    <a href="/sightings" style="margin-left:auto;color:#2a7;font-size:14px;text-decoration:none;">&#128038; Sightings</a>
   </div>
   <script>
     function setAwb(mode) {
@@ -167,38 +169,89 @@ def index():
 </html>"""
 
 
+def _format_ts(name):
+    try:
+        return datetime.strptime(name, "%Y-%m-%d_%H-%M-%S").strftime("%-d %b · %H:%M:%S")
+    except ValueError:
+        return name
+
+
+@app.route("/sightings")
 @app.route("/captures")
-def captures_index():
-    cards = []
+def sightings_index():
+    cards, count = [], 0
     for name in sorted(os.listdir(CAPTURES_DIR), reverse=True):
         d = os.path.join(CAPTURES_DIR, name)
         if not os.path.isdir(d):
             continue
         files = set(os.listdir(d))
-        thumb = (f'<a href="/captures/{name}/snapshot.jpg">'
-                 f'<img src="/captures/{name}/snapshot.jpg" loading="lazy"></a>'
-                 if "snapshot.jpg" in files else '<div class="none">no snapshot</div>')
         clip = next((f for f in ("clip.mp4", "clip.h264") if f in files), None)
-        clip_link = (f'<a href="/captures/{name}/{clip}">&#9654; clip</a>'
-                     if clip else '<span class="none">no clip</span>')
-        cards.append(f'<div class="card"><div class="ts">{name}</div>'
-                     f'{thumb}<div class="links">{clip_link}</div></div>')
-    body = "".join(cards) or "<p style='padding:12px'>No captures yet.</p>"
-    return f"""<!DOCTYPE html><html><head>
-<meta name="viewport" content="width=device-width, initial-scale=1">
+        if "snapshot.jpg" not in files and not clip:
+            continue
+        count += 1
+
+        species, confidence = "Unidentified", None
+        if "sighting.json" in files:
+            try:
+                with open(os.path.join(d, "sighting.json")) as fh:
+                    info = json.load(fh)
+                species = info.get("species") or "Unidentified"
+                confidence = info.get("confidence")
+            except Exception:
+                pass
+
+        conf_html = ""
+        if confidence is not None:
+            tier = "hi" if confidence >= 70 else "mid" if confidence >= 40 else "lo"
+            conf_html = f'<span class="conf {tier}">{confidence:.0f}%</span>'
+        badge = "🎬 Video" if clip else "📷 Photo"
+        href = f"/captures/{name}/{clip}" if clip else f"/captures/{name}/snapshot.jpg"
+        thumb = (f'<img src="/captures/{name}/snapshot.jpg" loading="lazy" alt="">'
+                 if "snapshot.jpg" in files else '<div class="noimg">🐦</div>')
+        cards.append(
+            f'<a class="card" href="{href}">'
+            f'<div class="thumb">{thumb}<span class="badge">{badge}</span></div>'
+            f'<div class="info"><div class="species">{species}{conf_html}</div>'
+            f'<div class="when">{_format_ts(name)}</div></div></a>'
+        )
+    body = "".join(cards) or '<p class="empty">No sightings yet — waiting for a visitor 🐦</p>'
+    return f"""<!DOCTYPE html><html lang="en"><head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Bird Sightings</title>
 <style>
-  body {{ margin:0; background:#111; color:#eee; font-family:sans-serif; }}
-  h1 {{ font-size:17px; padding:12px; margin:0; }}
-  a {{ color:#2a7; text-decoration:none; }}
-  .grid {{ display:grid; grid-template-columns:repeat(auto-fill,minmax(220px,1fr));
-           gap:10px; padding:12px; }}
-  .card {{ background:#1c1c1c; border-radius:8px; overflow:hidden; }}
-  .card img {{ width:100%; display:block; }}
-  .ts {{ font-size:12px; padding:6px 8px; color:#aaa; }}
-  .links {{ padding:8px; }}
-  .none {{ color:#666; font-size:13px; padding:8px; }}
+  * {{ box-sizing:border-box; }}
+  body {{ margin:0; background:#15171a; color:#e8e6e1;
+         font-family:-apple-system,Segoe UI,Roboto,sans-serif; }}
+  header {{ position:sticky; top:0; display:flex; align-items:center; gap:12px;
+           padding:14px 18px; background:#1d2024; border-bottom:1px solid #2c3036; }}
+  header h1 {{ font-size:19px; margin:0; }}
+  .count {{ background:#2e7d52; color:#fff; font-size:13px; font-weight:600;
+           padding:2px 10px; border-radius:999px; }}
+  .live {{ margin-left:auto; color:#7fd4a8; text-decoration:none; font-size:14px; }}
+  .grid {{ display:grid; gap:14px; padding:16px;
+          grid-template-columns:repeat(auto-fill,minmax(240px,1fr)); }}
+  .card {{ background:#1d2024; border-radius:14px; overflow:hidden;
+          text-decoration:none; color:inherit; border:1px solid #2c3036;
+          transition:transform .12s ease, box-shadow .12s ease; }}
+  .card:hover {{ transform:translateY(-3px); box-shadow:0 8px 22px #0008; }}
+  .thumb {{ position:relative; aspect-ratio:16/9; background:#101214; }}
+  .thumb img {{ width:100%; height:100%; object-fit:cover; display:block; }}
+  .noimg {{ display:flex; align-items:center; justify-content:center;
+           height:100%; font-size:38px; }}
+  .badge {{ position:absolute; bottom:8px; right:8px; background:#000a;
+           font-size:12px; padding:3px 8px; border-radius:8px; }}
+  .info {{ padding:10px 12px 12px; }}
+  .species {{ font-size:16px; font-weight:600; display:flex;
+             align-items:center; gap:8px; }}
+  .conf {{ font-size:12px; font-weight:700; padding:2px 8px; border-radius:999px; }}
+  .conf.hi {{ background:#2e7d52; color:#fff; }}
+  .conf.mid {{ background:#b8860b; color:#fff; }}
+  .conf.lo {{ background:#7a3b3b; color:#fff; }}
+  .when {{ font-size:12.5px; color:#9aa0a8; margin-top:4px; }}
+  .empty {{ padding:48px 20px; text-align:center; color:#9aa0a8; font-size:15px; }}
 </style></head><body>
-<h1>Captures &middot; <a href="/">&larr; live stream</a></h1>
+<header><h1>🐦 Bird Sightings</h1><span class="count">{count}</span>
+<a class="live" href="/">● Live stream</a></header>
 <div class="grid">{body}</div>
 </body></html>"""
 
